@@ -11,11 +11,7 @@ export declare class MemoriEngine {
    * `dialect` is the SQL dialect detected from the user's connection object
    * (e.g. `"sqlite"`, `"postgresql"`, `"cockroachdb"`, `"mysql"`).
    */
-  constructor(
-    modelName: string | undefined | null,
-    storageCallCb: (err: Error | null, arg0: number, arg1: string) => any,
-    dialect: string
-  );
+  constructor(modelName: string | undefined | null, storageCallCb: ((err: Error | null, arg0: number, arg1: string) => any), dialect: string)
   /**
    * Called by TS to unblock a pending Rust storage call.
    *
@@ -24,94 +20,94 @@ export declare class MemoriEngine {
    *   `{ "ok": true }` (for begin/commit/rollback/close),
    *   or `{ "error": { "code": "...", "message": "..." } }`.
    */
-  resolveStorageCall(id: number, resultJson: string): void;
+  resolveStorageCall(id: number, resultJson: string): void
   /** Runs database migrations. Must be called once after construction. */
-  build(): Promise<void>;
+  build(): Promise<void>
   /**
    * Executes a write batch synchronously within the Rust storage layer.
    *
    * Called by TS when it needs to persist data immediately (e.g. conversation messages
    * from the persistence engine) rather than waiting for the augmentation pipeline.
    */
-  writeBatch(json: string): Promise<NapiWriteAck>;
+  writeBatch(json: string): Promise<NapiWriteAck>
   /**
    * Returns conversation messages for the given session ID as a JSON array of
    * `{ role, content }` objects. Returns `"[]"` when no storage is configured.
    */
-  getConversationHistory(sessionId: string): Promise<string>;
-  embedTexts(texts: Array<string>): Array<Float32Array>;
-  retrieve(request: NapiRetrievalRequest): Promise<Array<NapiRecallObject>>;
-  recall(request: NapiRetrievalRequest): Promise<string>;
-  submitAugmentation(input: NapiAugmentationInput): string;
-  waitForAugmentation(timeoutMs?: number | undefined | null): Promise<boolean>;
-  shutdown(): void;
+  getConversationHistory(sessionId: string): Promise<string>
+  embedTexts(texts: Array<string>): Array<Float32Array>
+  retrieve(request: NapiRetrievalRequest): Promise<Array<NapiRecallObject>>
+  recall(request: NapiRetrievalRequest): Promise<string>
+  submitAugmentation(input: NapiAugmentationInput): string
+  waitForAugmentation(timeoutMs?: number | undefined | null): Promise<boolean>
+  shutdown(): void
 }
 
 export interface NapiAugmentationInput {
-  entityId: string;
-  processId?: string;
-  conversationId?: string;
-  conversationMessages?: Array<NapiMessage>;
-  systemPrompt?: string;
-  llmProvider?: string;
-  llmModel?: string;
-  llmProviderSdkVersion?: string;
-  framework?: string;
-  platformProvider?: string;
-  storageDialect?: string;
-  storageCockroachdb?: boolean;
-  sdkVersion?: string;
-  useMockResponse?: boolean;
-  sessionId?: string;
-  factId?: string;
-  content?: string;
+  entityId: string
+  processId?: string
+  conversationId?: string
+  conversationMessages?: Array<NapiMessage>
+  systemPrompt?: string
+  llmProvider?: string
+  llmModel?: string
+  llmProviderSdkVersion?: string
+  framework?: string
+  platformProvider?: string
+  storageDialect?: string
+  storageCockroachdb?: boolean
+  sdkVersion?: string
+  useMockResponse?: boolean
+  sessionId?: string
+  factId?: string
+  content?: string
 }
 
 export interface NapiCandidateFactRow {
-  id: number | string;
-  content: string;
-  dateCreated: string;
-  summaries?: Array<NapiCandidateSummaryRow>;
+  id: number | string
+  content: string
+  dateCreated: string
+  summaries?: Array<NapiCandidateSummaryRow>
 }
 
 export interface NapiCandidateSummaryRow {
-  content: string;
-  dateCreated: string;
+  content: string
+  dateCreated: string
 }
 
 export interface NapiEmbeddingRow {
-  id: number | string;
-  contentEmbedding: Float32Array;
+  id: number | string
+  contentEmbedding: Float32Array
 }
 
 export interface NapiMessage {
-  role: string;
-  content: string;
+  role: string
+  content: string
 }
 
 export interface NapiRecallObject {
-  id: number | string;
-  content: string;
-  rankScore?: number;
-  similarity?: number;
-  dateCreated?: string;
-  summaries?: Array<NapiRecallSummary>;
+  id: number | string
+  content: string
+  rankScore?: number
+  similarity?: number
+  dateCreated?: string
+  summaries?: Array<NapiRecallSummary>
 }
 
 export interface NapiRecallSummary {
-  content: string;
-  dateCreated: string;
-  entityFactId?: number | string;
-  factId?: number | string;
+  content: string
+  dateCreated: string
+  entityFactId?: number | string
+  factId?: number | string
 }
 
 export interface NapiRetrievalRequest {
-  entityId: string;
-  queryText: string;
-  denseLimit: number;
-  limit: number;
+  entityId: string
+  queryText: string
+  denseLimit: number
+  limit: number
 }
 
 export interface NapiWriteAck {
-  writtenOps: number;
+  writtenOps: number
 }

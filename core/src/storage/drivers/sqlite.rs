@@ -257,12 +257,9 @@ pub fn entity_fact_get_embeddings(
     limit: usize,
 ) -> Result<Vec<EmbeddingRow>, HostStorageError> {
     let rows = conn.execute(
-        &format!(
-            "SELECT id, content_embedding FROM memori_entity_fact \
-             WHERE entity_id = ? ORDER BY date_last_time DESC, num_times DESC, id DESC LIMIT {}",
-            limit
-        ),
-        vec![SqlBind::Int(entity_id)],
+        "SELECT id, content_embedding FROM memori_entity_fact \
+         WHERE entity_id = ? ORDER BY date_last_time DESC, num_times DESC, id DESC LIMIT ?",
+        vec![SqlBind::Int(entity_id), SqlBind::Int(limit as i64)],
     )?;
 
     let mut results = Vec::new();

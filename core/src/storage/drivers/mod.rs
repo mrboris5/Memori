@@ -10,13 +10,17 @@ pub fn new_uuid() -> String {
 }
 
 /// Stable content-addressable key used to deduplicate facts, subjects, and predicates.
-/// SHA-256 is chosen for collision resistance — two identical strings always produce the
-/// same `uniq`, so ON CONFLICT clauses can increment `num_times` instead of inserting duplicates.
+/// Matches the Python SDK: join all terms, strip non-alphanumeric characters, lowercase, then SHA-256.
+/// This ensures `uniq` values are consistent across the Rust and Python SDKs.
 pub fn generate_uniq(inputs: &[&str]) -> String {
+    let joined: String = inputs
+        .iter()
+        .flat_map(|s| s.chars())
+        .filter(|c| c.is_ascii_alphanumeric())
+        .map(|c| c.to_ascii_lowercase())
+        .collect();
     let mut hasher = Sha256::new();
-    for input in inputs {
-        hasher.update(input.as_bytes());
-    }
+    hasher.update(joined.as_bytes());
     format!("{:x}", hasher.finalize())
 }
 

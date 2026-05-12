@@ -6,16 +6,21 @@ pub enum Dialect {
     Mysql,
 }
 
-impl Dialect {
-    pub fn from_str(s: &str) -> Option<Self> {
+impl std::str::FromStr for Dialect {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "sqlite" => Some(Self::Sqlite),
-            "postgresql" => Some(Self::Postgresql),
-            "cockroachdb" => Some(Self::Cockroachdb),
-            "mysql" => Some(Self::Mysql),
-            _ => None,
+            "sqlite" => Ok(Self::Sqlite),
+            "postgresql" => Ok(Self::Postgresql),
+            "cockroachdb" => Ok(Self::Cockroachdb),
+            "mysql" => Ok(Self::Mysql),
+            other => Err(format!("unsupported dialect: {other}")),
         }
     }
+}
+
+impl Dialect {
 
     /// PostgreSQL (and CockroachDB) leave transactions open on error and need
     /// an explicit ROLLBACK before the connection can be reused. SQLite cleans

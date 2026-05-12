@@ -15,12 +15,16 @@ pub trait StorageBridge: Send + Sync {
 
     fn write_batch(&self, batch: &WriteBatch) -> Result<WriteAck, HostStorageError>;
 
-    fn build(&self) -> Result<(), HostStorageError>;
+    fn build(&self) -> Result<(), HostStorageError> {
+        Ok(())
+    }
 
     fn get_conversation_history(
         &self,
-        session_id: &str,
-    ) -> Result<Vec<serde_json::Value>, HostStorageError>;
+        _session_id: &str,
+    ) -> Result<Vec<serde_json::Value>, HostStorageError> {
+        Ok(vec![])
+    }
 
     fn shutdown(&self) {}
 }

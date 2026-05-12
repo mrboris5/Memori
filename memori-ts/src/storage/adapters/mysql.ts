@@ -1,54 +1,84 @@
 import { StorageAdapter, SqlBindValue } from '../base.js';
 import { Registry } from '../registry.js';
 
-interface MysqlLike {
+interface MysqlPool {
   execute(sql: string, binds?: SqlBindValue[]): Promise<[unknown[], unknown]>;
   query(sql: string): Promise<unknown>;
+  getConnection(): Promise<MysqlConnection>;
   end?(): Promise<void>;
-  release?(): void;
+}
+
+interface MysqlConnection {
+  execute(sql: string, binds?: SqlBindValue[]): Promise<[unknown[], unknown]>;
+  query(sql: string): Promise<unknown>;
+  beginTransaction(): Promise<void>;
+  commit(): Promise<void>;
+  rollback(): Promise<void>;
+  release(): void;
 }
 
 function isMysqlConnection(conn: unknown): boolean {
   return (
     conn != null &&
-    typeof (conn as MysqlLike).execute === 'function' &&
-    typeof (conn as MysqlLike).query === 'function'
+    typeof (conn as MysqlPool).execute === 'function' &&
+    typeof (conn as MysqlPool).query === 'function'
   );
 }
 
 export class MysqlAdapter implements StorageAdapter {
-  private client: MysqlLike;
+  private readonly pool: MysqlPool;
+  private txConn: MysqlConnection | null = null;
 
   constructor(conn: unknown) {
-    this.client = conn as MysqlLike;
+    this.pool = conn as MysqlPool;
   }
 
   public async execute<T = Record<string, unknown>>(
     operation: string,
     binds: SqlBindValue[] = []
   ): Promise<T[]> {
-    const [rows] = await this.client.execute(operation, binds);
+    const client = this.txConn ?? this.pool;
+    const [rows] = await client.execute(operation, binds);
     return Array.isArray(rows) ? (rows as T[]) : [];
   }
 
   public async begin(): Promise<void> {
-    await this.client.query('BEGIN');
+    this.txConn = await this.pool.getConnection();
+    await this.txConn.beginTransaction();
   }
+
   public async commit(): Promise<void> {
-    await this.client.query('COMMIT');
+    if (this.txConn) {
+      const conn = this.txConn;
+      this.txConn = null;
+      await conn.commit();
+      conn.release();
+    }
   }
+
   public async rollback(): Promise<void> {
-    await this.client.query('ROLLBACK');
+    if (this.txConn) {
+      const conn = this.txConn;
+      this.txConn = null;
+      try {
+        await conn.rollback();
+      } catch {
+        // non-fatal
+      } finally {
+        conn.release();
+      }
+    }
   }
+
   public getDialect(): string {
     return 'mysql';
   }
 
   public close(): void {
-    // Only release back to a pool — never call end(), which would destroy the pool.
-    // The caller owns the pool lifecycle and is responsible for calling pool.end().
-    if (typeof this.client.release === 'function') {
-      this.client.release();
+    // Release any checked-out transaction connection — never call pool.end(), caller owns pool lifecycle.
+    if (this.txConn) {
+      this.txConn.release();
+      this.txConn = null;
     }
   }
 }

@@ -25,7 +25,7 @@ function deserializeBinds(binds: Array<{ t: string; v: unknown }>): SqlBindValue
       case 'null':
         return null;
       case 'int':
-        return bind.v as number;
+        return bind.v as string;
       case 'float':
         return bind.v as number;
       case 'text':

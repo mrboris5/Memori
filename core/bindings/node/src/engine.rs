@@ -14,9 +14,7 @@ use std::sync::Arc;
 pub struct MemoriEngine {
     pub(crate) inner: Arc<EngineOrchestrator>,
     pub(crate) factory: Arc<NodeConnectionFactory>,
-    /// Kept separately so `build()`, `write_batch()`, and `get_conversation_history()` can
-    /// call storage methods directly without going through the `StorageBridge` trait object.
-    pub(crate) storage_manager: Option<Arc<RustStorageManager>>,
+    pub(crate) storage_manager: Arc<RustStorageManager>,
 }
 
 #[napi]
@@ -41,8 +39,9 @@ impl MemoriEngine {
             napi::sys::napi_unref_threadsafe_function(env.raw(), storage_call_cb.raw());
         }
 
-        let dialect_enum = Dialect::from_str(&dialect)
-            .ok_or_else(|| Error::from_reason(format!("unsupported dialect: {dialect}")))?;
+        let dialect_enum = dialect
+            .parse::<Dialect>()
+            .map_err(|e| Error::from_reason(e))?;
 
         let factory = Arc::new(NodeConnectionFactory::new(storage_call_cb, dialect));
         let storage_manager = Arc::new(RustStorageManager::new(factory.clone(), dialect_enum));
@@ -75,7 +74,7 @@ impl MemoriEngine {
         Ok(Self {
             inner,
             factory,
-            storage_manager: Some(storage_manager),
+            storage_manager,
         })
     }
 
@@ -93,18 +92,14 @@ impl MemoriEngine {
     /// Runs database migrations. Must be called once after construction.
     #[napi]
     pub async fn build(&self) -> Result<()> {
-        if let Some(storage) = &self.storage_manager {
-            let storage = storage.clone();
-            tokio::task::spawn_blocking(move || {
-                storage
-                    .build()
-                    .map_err(|e| Error::from_reason(e.to_string()))
-            })
-            .await
-            .map_err(|e| Error::from_reason(e.to_string()))?
-        } else {
-            Ok(())
-        }
+        let storage = self.storage_manager.clone();
+        tokio::task::spawn_blocking(move || {
+            storage
+                .build()
+                .map_err(|e| Error::from_reason(e.to_string()))
+        })
+        .await
+        .map_err(|e| Error::from_reason(e.to_string()))?
     }
 
     /// Executes a write batch synchronously within the Rust storage layer.
@@ -113,45 +108,37 @@ impl MemoriEngine {
     /// from the persistence engine) rather than waiting for the augmentation pipeline.
     #[napi]
     pub async fn write_batch(&self, json: String) -> Result<NapiWriteAck> {
-        if let Some(storage) = &self.storage_manager {
-            let storage = storage.clone();
-            tokio::task::spawn_blocking(move || {
-                let batch: WriteBatch = serde_json::from_str(&json)
-                    .map_err(|e| Error::from_reason(format!("invalid batch JSON: {e}")))?;
-                storage
-                    .write_batch(&batch)
-                    .map_err(|e| Error::from_reason(e.to_string()))
-                    .map(|ack| NapiWriteAck {
-                        written_ops: ack.written_ops as u32,
-                    })
-            })
-            .await
-            .map_err(|e| Error::from_reason(e.to_string()))?
-        } else {
-            Ok(NapiWriteAck { written_ops: 0 })
-        }
+        let storage = self.storage_manager.clone();
+        tokio::task::spawn_blocking(move || {
+            let batch: WriteBatch = serde_json::from_str(&json)
+                .map_err(|e| Error::from_reason(format!("invalid batch JSON: {e}")))?;
+            storage
+                .write_batch(&batch)
+                .map_err(|e| Error::from_reason(e.to_string()))
+                .map(|ack| NapiWriteAck {
+                    written_ops: ack.written_ops as u32,
+                })
+        })
+        .await
+        .map_err(|e| Error::from_reason(e.to_string()))?
     }
 
     /// Returns conversation messages for the given session ID as a JSON array of
     /// `{ role, content }` objects. Returns `"[]"` when no storage is configured.
     #[napi]
     pub async fn get_conversation_history(&self, session_id: String) -> Result<String> {
-        if let Some(storage) = &self.storage_manager {
-            let storage = storage.clone();
-            tokio::task::spawn_blocking(move || {
-                storage
-                    .get_conversation_history(&session_id)
-                    .map_err(|e| Error::from_reason(e.to_string()))
-                    .and_then(|messages| {
-                        serde_json::to_string(&messages)
-                            .map_err(|e| Error::from_reason(e.to_string()))
-                    })
-            })
-            .await
-            .map_err(|e| Error::from_reason(e.to_string()))?
-        } else {
-            Ok("[]".to_string())
-        }
+        let storage = self.storage_manager.clone();
+        tokio::task::spawn_blocking(move || {
+            storage
+                .get_conversation_history(&session_id)
+                .map_err(|e| Error::from_reason(e.to_string()))
+                .and_then(|messages| {
+                    serde_json::to_string(&messages)
+                        .map_err(|e| Error::from_reason(e.to_string()))
+                })
+        })
+        .await
+        .map_err(|e| Error::from_reason(e.to_string()))?
     }
 
     #[napi]

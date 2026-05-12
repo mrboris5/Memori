@@ -48,6 +48,19 @@ impl RustStorageManager {
         }
     }
 
+    // ── connection helper ─────────────────────────────────────────────────────
+
+    /// Acquires a connection, runs `f`, then closes it — even on error.
+    fn with_conn<T>(
+        &self,
+        f: impl FnOnce(&dyn crate::storage::connection::StorageConnection) -> Result<T, HostStorageError>,
+    ) -> Result<T, HostStorageError> {
+        let conn = self.factory.acquire()?;
+        let result = f(&*conn);
+        conn.close();
+        result
+    }
+
     // ── dispatch helpers ──────────────────────────────────────────────────────
 
     fn do_entity_create(
@@ -262,7 +275,7 @@ impl RustStorageManager {
                         .unwrap_or(0);
                     let conv_id = self
                         .do_conversation_create(conn, session_id, 30)?
-                        .unwrap_or(session_id);
+                        .unwrap_or(0);
 
                     if let Some(messages) = op.payload["messages"].as_array() {
                         for msg in messages {
@@ -375,7 +388,7 @@ impl RustStorageManager {
                         .unwrap_or(0);
                     let conv_id = self
                         .do_conversation_create(conn, session_id, 30)?
-                        .unwrap_or(session_id);
+                        .unwrap_or(0);
                     let summary = op.payload["summary"].as_str().unwrap_or("");
                     self.do_conversation_update(conn, conv_id, summary)?;
                 }
@@ -416,25 +429,25 @@ impl StorageBridge for RustStorageManager {
         &self,
         session_id: &str,
     ) -> Result<Vec<serde_json::Value>, HostStorageError> {
-        let conn = self.factory.acquire()?;
-        let session_internal_id = self
-            .do_session_create(&*conn, session_id, None, None)?
-            .unwrap_or(0);
-        let conv_id = self
-            .do_conversation_create(&*conn, session_internal_id, 30)?
-            .unwrap_or(0);
-        let messages = match &self.dialect {
-            Dialect::Sqlite => sqlite::conversation_messages_read(&*conn, conv_id)?,
-            Dialect::Postgresql | Dialect::Cockroachdb => {
-                postgresql::conversation_messages_read(&*conn, conv_id)?
-            }
-            Dialect::Mysql => mysql::conversation_messages_read(&*conn, conv_id)?,
-        };
-        conn.close();
-        Ok(messages
-            .into_iter()
-            .map(|(role, content)| serde_json::json!({ "role": role, "content": content }))
-            .collect())
+        self.with_conn(|conn| {
+            let session_internal_id = self
+                .do_session_create(conn, session_id, None, None)?
+                .unwrap_or(0);
+            let conv_id = self
+                .do_conversation_create(conn, session_internal_id, 30)?
+                .unwrap_or(0);
+            let messages = match &self.dialect {
+                Dialect::Sqlite => sqlite::conversation_messages_read(conn, conv_id)?,
+                Dialect::Postgresql | Dialect::Cockroachdb => {
+                    postgresql::conversation_messages_read(conn, conv_id)?
+                }
+                Dialect::Mysql => mysql::conversation_messages_read(conn, conv_id)?,
+            };
+            Ok(messages
+                .into_iter()
+                .map(|(role, content)| serde_json::json!({ "role": role, "content": content }))
+                .collect())
+        })
     }
 
     fn fetch_embeddings(
@@ -442,23 +455,19 @@ impl StorageBridge for RustStorageManager {
         entity_id: &str,
         limit: usize,
     ) -> Result<Vec<EmbeddingRow>, HostStorageError> {
-        let conn = self.factory.acquire()?;
-        let internal_id = self
-            .do_entity_create(&*conn, entity_id)?
-            .ok_or_else(|| HostStorageError::new("NOT_FOUND", "entity not found after upsert"))?;
-        let result = self.do_entity_fact_get_embeddings(&*conn, internal_id, limit)?;
-        conn.close();
-        Ok(result)
+        self.with_conn(|conn| {
+            let internal_id = self
+                .do_entity_create(conn, entity_id)?
+                .ok_or_else(|| HostStorageError::new("NOT_FOUND", "entity not found after upsert"))?;
+            self.do_entity_fact_get_embeddings(conn, internal_id, limit)
+        })
     }
 
     fn fetch_facts_by_ids(
         &self,
         ids: &[FactId],
     ) -> Result<Vec<CandidateFactRow>, HostStorageError> {
-        let conn = self.factory.acquire()?;
-        let result = self.do_entity_fact_get_by_ids(&*conn, ids)?;
-        conn.close();
-        Ok(result)
+        self.with_conn(|conn| self.do_entity_fact_get_by_ids(conn, ids))
     }
 
     /// Executes all write ops in a single transaction per the Python `connection_context` model.
