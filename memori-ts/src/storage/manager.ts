@@ -52,6 +52,7 @@ function deserializeBinds(binds: Array<{ t: string; v: unknown }>): SqlBindValue
  */
 /** Milliseconds of inactivity before an acquired-but-never-closed connection is considered orphaned. */
 const CONN_TTL_MS = 30_000;
+const SWEEP_INTERVAL_MS = 60_000;
 
 /**
  * Normalizes a single DB row value for JSON transport back to Rust.
@@ -87,11 +88,15 @@ export class StorageManager {
   private nextConnId = 1;
   private engineShutdown?: () => void;
   private engineBuild?: () => Promise<void>;
+  private sweepHandle?: ReturnType<typeof setInterval>;
 
   constructor(factory: ConnFactory, dialectOverride?: string) {
     this.factory = factory;
     this.dialectOverride = dialectOverride;
     this.dialectAdapter = Registry.getAdapter(factory);
+    const handle = setInterval(() => this.sweepOrphanedConnections(), SWEEP_INTERVAL_MS);
+    handle.unref();
+    this.sweepHandle = handle;
   }
 
   public getDialect(): string {
@@ -253,6 +258,8 @@ export class StorageManager {
   }
 
   public async close(): Promise<void> {
+    clearInterval(this.sweepHandle);
+    this.sweepHandle = undefined;
     if (this.engineShutdown) {
       this.engineShutdown();
       this.engineShutdown = undefined;
