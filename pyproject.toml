@@ -88,7 +88,8 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "--cov=src/memori --cov-report=term-missing --cov-report=xml"
+# Removed --cov-report=xml locally — I don't use CI coverage uploads, terminal output is enough.
+addopts = "--cov=src/memori --cov-report=term-missing"
 
 [tool.coverage.run]
 source = ["src/memori"]
